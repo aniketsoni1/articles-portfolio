@@ -40,7 +40,11 @@ def request(method: str, path: str, body: dict | None = None) -> dict | list:
         f"{API_BASE}{path}",
         data=data,
         method=method,
-        headers={"api-key": api_key(), "Content-Type": "application/json"},
+        headers={
+            "api-key": api_key(),
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (compatible; devto-publisher/1.0; +https://github.com/aniketsoni1/articles-html-portfolio)",
+        },
     )
     try:
         with urllib.request.urlopen(req) as resp:
