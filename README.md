@@ -1,40 +1,55 @@
 # articles-html-portfolio
 
-Automated article pipeline. Articles are written as Markdown in `posts/`, and a
-GitHub Action publishes them to [Dev.to](https://dev.to) automatically on every push.
+Automated article pipeline. Each article lives in its own timestamped folder under
+`articles/`, and a GitHub Action publishes it to [Dev.to](https://dev.to). A second
+Action can also generate a fresh article every day for free.
 
 ## How it works
 
 ```
-posts/*.md  ──push──▶  GitHub Action  ──▶  scripts/post_to_devto.py  ──▶  Dev.to
+articles/<folder>/article.md  ──▶  GitHub Action  ──▶  scripts/post_to_devto.py  ──▶  Dev.to
 ```
 
-1. Each article lives in `posts/` as a Markdown file with front matter (title, tags, cover image, etc.).
-2. On every push to `main` that touches `posts/`, the workflow in `.github/workflows/publish.yml` runs.
-3. `scripts/post_to_devto.py` reads each post and creates or updates the matching article on Dev.to.
-   It matches by title, so re-running never creates duplicates.
+1. Each article is a self-contained folder: `articles/articleMMDDYYYY_HHMMSS/` containing
+   `article.md` (with front matter) plus any images that article uses.
+2. On every push to `main` that touches `articles/`, `.github/workflows/publish.yml` runs.
+3. `scripts/post_to_devto.py` reads every `articles/*/article.md` and creates or updates
+   the matching article on Dev.to. It matches by title, so re-running never duplicates.
+
+Timestamped folders mean two articles never overwrite each other, and an article's images
+always travel with it.
 
 ## Repository layout
 
 ```
 .
-├── .github/workflows/publish.yml   # the automation (runs on push, daily, or manually)
-├── assets/                         # images referenced by articles (served via raw.githubusercontent)
-├── posts/                          # one Markdown file per article
-├── scripts/post_to_devto.py        # the publisher
-└── requirements.txt                # Python dependencies
+├── .github/workflows/
+│   ├── publish.yml                 # posts articles to Dev.to (on push, daily, manual)
+│   └── generate.yml                # writes a new article daily via Gemini (free)
+├── articles/
+│   └── article06082026_180000/     # one folder per article
+│       ├── article.md
+│       ├── cover.png
+│       └── fig1.png ...
+├── scripts/
+│   ├── post_to_devto.py            # the publisher
+│   └── generate_article.py         # the daily writer
+├── topics.txt                      # queue of ideas for the generator (one per line)
+├── requirements.txt
+└── README.md
 ```
 
-## Setup (one time)
+## One-time setup
 
-1. Add your Dev.to API key as a repository secret named **`DEVTO_API_KEY`**
-   (Settings → Secrets and variables → Actions → New repository secret).
-   Get the key at https://dev.to/settings/extensions.
-2. That's it. Push an article and the Action handles the rest.
+Add two repository secrets (Settings → Secrets and variables → Actions):
 
-## Adding a new article
+- `DEVTO_API_KEY` — from https://dev.to/settings/extensions (publishing).
+- `GEMINI_API_KEY` — from https://aistudio.google.com/app/apikey (daily generation).
 
-1. Create `posts/your-slug.md` with front matter:
+## Adding an article by hand
+
+1. Create a folder `articles/article<MMDDYYYY>_<HHMMSS>/` (any unique name works).
+2. Inside it, create `article.md`:
 
    ```markdown
    ---
@@ -42,20 +57,37 @@ posts/*.md  ──push──▶  GitHub Action  ──▶  scripts/post_to_devto
    published: false        # false = draft on Dev.to, true = live
    description: "One-line summary."
    tags: tag1, tag2, tag3  # up to 4, lowercase
-   cover_image: https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/assets/your-cover.png
+   cover_image: https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/articles/<folder>/cover.png
    canonical_url:
    ---
 
    Your article body in Markdown...
    ```
 
-2. Put any images in `assets/` and reference them with their raw GitHub URL.
-3. Commit and push. The Action publishes it as a draft.
-4. Review on Dev.to, then flip `published: false` → `true` and push again to go live.
+3. Drop images in the same folder; reference them with their raw GitHub URL.
+4. Commit and push. The Action publishes it (as a draft if `published: false`).
+   Review on Dev.to, then flip to `published: true` and push again to go live.
+
+## Daily auto-generation (free, via Google Gemini)
+
+`.github/workflows/generate.yml` runs daily at 08:00 UTC. It:
+
+1. Takes the next topic from `topics.txt` (or invents one if the file is empty),
+2. Generates an article with the Gemini free-tier API (`scripts/generate_article.py`),
+3. Writes it to a new `articles/article<timestamp>/article.md` as a draft (`published: false`),
+4. Commits it back and pushes the draft to Dev.to.
+
+You review it on Dev.to and hit **Publish** when ready. Add ideas to `topics.txt`
+(one per line); each run consumes the top line.
+
+> Gemini model names and free-tier limits change over time. If a run fails with a
+> model/404 error, update `MODEL` in `scripts/generate_article.py` to a current free
+> model listed in AI Studio.
 
 ## Running locally (optional)
 
 ```bash
 pip install -r requirements.txt
-DEVTO_API_KEY=your_key_here python scripts/post_to_devto.py
+DEVTO_API_KEY=your_key  python scripts/post_to_devto.py
+GEMINI_API_KEY=your_key python scripts/generate_article.py
 ```

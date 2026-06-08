@@ -1,9 +1,9 @@
 ---
-title: "Biohack Your Brain with Neural Implants: Why Silicon Valley's Elite Are Betting Big in 2025"
-published: false
+title: "Biohack Your Brain with Neural Implants: Why Silicon Valley's Elite Are Betting Big in 2026"
+published: true
 description: "Rewiring your mind for the ultimate cognitive leap — inside the 2025 brain-computer interface race."
 tags: ai, neuroscience, technology, future
-cover_image: https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/assets/biohack-cover.png
+cover_image: https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/articles/article06082026_180000/cover.png
 canonical_url:
 ---
 
@@ -31,7 +31,7 @@ Silicon Valley thrives on disruption, and the brain is the ultimate frontier. Bi
 
 The numbers are jaw-dropping: the global BCI market is projected at $3.7 billion in 2025, with a 15.1% CAGR from 2020. Venture capital is flooding in—Neuralink has raised $158 million, Synchron $70 million, Precision Neuroscience $41 million, Paradromics $25 million, and Blackrock Neurotech $10 million+. China's state-backed CIBR/NeuCyber is a wildcard, planning 13 implants by year-end, challenging Western dominance. This isn't just tech—it's a cultural shift, and Silicon Valley is leading the charge.
 
-![BCI funding and investment landscape, 2025](https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/assets/biohack-fig1.png)
+![BCI funding and investment landscape, 2025](https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/articles/article06082026_180000/fig1.png)
 
 ## 5. The Science: How Neural Implants Work
 
@@ -61,7 +61,7 @@ The BCI landscape is a battleground in 2025, with companies racing to dominate m
 | Paradromics | 50,000 | Microwire Array | Pre-clinical, trials 2025 | $25M |
 | Blackrock Neurotech | 96–128 | Utah Array | Dozens since 2004 | $10M+ |
 
-![BCI race comparison across key players, 2025](https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/assets/biohack-fig2.png)
+![BCI race comparison across key players, 2025](https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/articles/article06082026_180000/fig2.png)
 
 ## 7. The Mind-Blowing Road Ahead
 

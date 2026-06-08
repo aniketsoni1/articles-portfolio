@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""
+Generate one article per run using the Google Gemini API (free tier) and save
+it into posts/ as a Markdown file with Dev.to front matter (published: false,
+so you review and hit Publish on Dev.to yourself).
+
+Topic source: the first non-empty line of topics.txt is used and then removed.
+If topics.txt is empty/missing, the model picks a fresh topic in NICHE below.
+
+Requires the GEMINI_API_KEY environment variable (a GitHub Actions secret).
+Get a free key at https://aistudio.google.com/app/apikey
+
+NOTE: Google changes model names and free-tier limits over time. If you get a
+404/model error, check the current free model name in AI Studio and update MODEL.
+"""
+
+import os
+import re
+import sys
+import json
+import datetime
+import urllib.request
+import urllib.error
+
+MODEL = "gemini-2.0-flash"          # free-tier model; verify/update at AI Studio
+NICHE = "data engineering, AI/ML, and cloud-native systems"
+TOPICS_FILE = "topics.txt"
+ARTICLES_DIR = "articles"
+
+ENDPOINT = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+)
+
+
+def api_key() -> str:
+    k = os.environ.get("GEMINI_API_KEY")
+    if not k:
+        sys.exit("ERROR: GEMINI_API_KEY is not set.")
+    return k
+
+
+def next_topic() -> tuple[str | None, list[str]]:
+    if os.path.exists(TOPICS_FILE):
+        lines = [l.strip() for l in open(TOPICS_FILE) if l.strip()]
+        if lines:
+            return lines[0], lines[1:]
+    return None, []
+
+
+def call_gemini(prompt: str) -> str:
+    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
+    req = urllib.request.Request(
+        f"{ENDPOINT}?key={api_key()}",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            data = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        sys.exit(f"Gemini API error {e.code}: {e.read().decode()}")
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+def main() -> None:
+    topic, remaining = next_topic()
+    topic_line = (
+        f'The topic is: "{topic}".'
+        if topic
+        else f"Pick a fresh, specific, currently-relevant topic in {NICHE}."
+    )
+
+    prompt = f"""You are a professional technical writer. Write one original, engaging article for Dev.to.
+
+{topic_line}
+
+Return ONLY valid JSON (no markdown fences, no preamble) with exactly these keys:
+- "title": a compelling title (string)
+- "description": a one-sentence summary under 150 characters (string)
+- "tags": 2 to 4 lowercase single-word tags, as a JSON array of strings
+- "body_markdown": the full article in Markdown, 700-1100 words, using ## headings,
+  short paragraphs, and a brief conclusion. Do NOT include the title as an H1 in the body.
+"""
+
+    raw = call_gemini(prompt).strip()
+    raw = re.sub(r"^```(json)?|```$", "", raw, flags=re.MULTILINE).strip()
+    art = json.loads(raw, strict=False)
+
+    tags = [str(t).lower() for t in art.get("tags", [])][:4]
+    # one self-contained folder per article: articles/article<MMDDYYYY>_<HHMMSS>/
+    ts = datetime.datetime.now().strftime("%m%d%Y_%H%M%S")
+    folder = os.path.join(ARTICLES_DIR, f"article{ts}")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, "article.md")
+
+    q = chr(34)  # double quote
+    sq = chr(39)  # single quote
+    front_matter = (
+        "---\n"
+        f"title: {q}{art['title'].replace(q, sq)}{q}\n"
+        "published: false\n"
+        f"description: {q}{art.get('description', '').replace(q, sq)}{q}\n"
+        f"tags: {', '.join(tags)}\n"
+        "canonical_url:\n"
+        "---\n\n"
+    )
+
+    with open(path, "w") as f:
+        f.write(front_matter + art["body_markdown"].strip() + "\n")
+    print(f"Wrote {path}")
+
+    # consume the used topic so it isn't reused tomorrow
+    if topic is not None:
+        with open(TOPICS_FILE, "w") as f:
+            f.write("\n".join(remaining) + ("\n" if remaining else ""))
+        print(f"Consumed topic: {topic}")
+
+
+if __name__ == "__main__":
+    main()

@@ -24,7 +24,7 @@ import urllib.error
 import frontmatter  # pip install python-frontmatter
 
 API_BASE = "https://dev.to/api"
-POSTS_DIR = "posts"
+POSTS_GLOB = "articles/*/article.md"
 
 
 def api_key() -> str:
@@ -88,9 +88,9 @@ def build_payload(post: "frontmatter.Post") -> dict:
 
 
 def main() -> None:
-    files = sorted(glob.glob(os.path.join(POSTS_DIR, "*.md")))
+    files = sorted(glob.glob(POSTS_GLOB))
     if not files:
-        print("No markdown files found in posts/. Nothing to do.")
+        print("No articles found under articles/. Nothing to do.")
         return
 
     existing = existing_articles_by_title()
