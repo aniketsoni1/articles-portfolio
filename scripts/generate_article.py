@@ -39,12 +39,22 @@ def api_key() -> str:
     return k
 
 
-def next_topic() -> tuple[str | None, list[str]]:
+def get_topics() -> list[str]:
+    """Topics from the ARTICLE_TOPICS secret (private), or topics.txt as fallback."""
+    env = os.environ.get("ARTICLE_TOPICS")
+    if env and env.strip():
+        return [l.strip() for l in env.splitlines() if l.strip()]
     if os.path.exists(TOPICS_FILE):
-        lines = [l.strip() for l in open(TOPICS_FILE) if l.strip()]
-        if lines:
-            return lines[0], lines[1:]
-    return None, []
+        return [l.strip() for l in open(TOPICS_FILE) if l.strip()]
+    return []
+
+
+def pick_topic(topics: list[str]) -> str | None:
+    """Rotate through the list by date so it cycles without storing any state."""
+    if not topics:
+        return None
+    idx = datetime.date.today().toordinal() % len(topics)
+    return topics[idx]
 
 
 def call_gemini(prompt: str) -> str:
@@ -64,7 +74,7 @@ def call_gemini(prompt: str) -> str:
 
 
 def main() -> None:
-    topic, remaining = next_topic()
+    topic = pick_topic(get_topics())
     topic_line = (
         f'The topic is: "{topic}".'
         if topic
@@ -109,12 +119,8 @@ Return ONLY valid JSON (no markdown fences, no preamble) with exactly these keys
     with open(path, "w") as f:
         f.write(front_matter + art["body_markdown"].strip() + "\n")
     print(f"Wrote {path}")
-
-    # consume the used topic so it isn't reused tomorrow
-    if topic is not None:
-        with open(TOPICS_FILE, "w") as f:
-            f.write("\n".join(remaining) + ("\n" if remaining else ""))
-        print(f"Consumed topic: {topic}")
+    if topic:
+        print(f"Topic used: {topic}")
 
 
 if __name__ == "__main__":

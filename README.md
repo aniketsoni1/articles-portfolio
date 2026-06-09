@@ -34,7 +34,6 @@ always travel with it.
 ├── scripts/
 │   ├── post_to_devto.py            # the publisher
 │   └── generate_article.py         # the daily writer
-├── topics.txt                      # queue of ideas for the generator (one per line)
 ├── requirements.txt
 └── README.md
 ```
@@ -45,6 +44,10 @@ Add two repository secrets (Settings → Secrets and variables → Actions):
 
 - `DEVTO_API_KEY` — from https://dev.to/settings/extensions (publishing).
 - `GEMINI_API_KEY` — from https://aistudio.google.com/app/apikey (daily generation).
+- `ARTICLE_TOPICS` — *(optional)* your private topic list, one idea per line. Kept in a
+  secret so it stays hidden from the public repo while the workflow can still read it.
+  The generator rotates through the list by date; leave it unset to let Gemini pick its
+  own topic in the configured niche.
 
 ## Adding an article by hand
 
@@ -72,13 +75,13 @@ Add two repository secrets (Settings → Secrets and variables → Actions):
 
 `.github/workflows/generate.yml` runs daily at 08:00 UTC. It:
 
-1. Takes the next topic from `topics.txt` (or invents one if the file is empty),
+1. Picks a topic from the `ARTICLE_TOPICS` secret (rotated by date), or invents one if unset,
 2. Generates an article with the Gemini free-tier API (`scripts/generate_article.py`),
 3. Writes it to a new `articles/article<timestamp>/article.md` as a draft (`published: false`),
 4. Commits it back and pushes the draft to Dev.to.
 
-You review it on Dev.to and hit **Publish** when ready. Add ideas to `topics.txt`
-(one per line); each run consumes the top line.
+You review it on Dev.to and hit **Publish** when ready. To change topics, edit the
+`ARTICLE_TOPICS` secret (Settings → Secrets and variables → Actions) — one idea per line.
 
 > Gemini model names and free-tier limits change over time. If a run fails with a
 > model/404 error, update `MODEL` in `scripts/generate_article.py` to a current free
@@ -89,5 +92,5 @@ You review it on Dev.to and hit **Publish** when ready. Add ideas to `topics.txt
 ```bash
 pip install -r requirements.txt
 DEVTO_API_KEY=your_key  python scripts/post_to_devto.py
-GEMINI_API_KEY=your_key python scripts/generate_article.py
+ARTICLE_TOPICS=$"topic one\ntopic two" GEMINI_API_KEY=your_key python scripts/generate_article.py
 ```
