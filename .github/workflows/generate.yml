@@ -1,127 +1,42 @@
-#!/usr/bin/env python3
-"""
-Generate one article per run using the Google Gemini API (free tier) and save
-it into posts/ as a Markdown file with Dev.to front matter (published: false,
-so you review and hit Publish on Dev.to yourself).
+name: Generate daily article
 
-Topic source: the first non-empty line of topics.txt is used and then removed.
-If topics.txt is empty/missing, the model picks a fresh topic in NICHE below.
+on:
+  schedule:
+    - cron: "0 8 * * *"     # every day at 08:00 UTC
+  workflow_dispatch: {}       # manual trigger button for testing
 
-Requires the GEMINI_API_KEY environment variable (a GitHub Actions secret).
-Get a free key at https://aistudio.google.com/app/apikey
+permissions:
+  contents: write             # allow the job to commit the new article back
 
-NOTE: Google changes model names and free-tier limits over time. If you get a
-404/model error, check the current free model name in AI Studio and update MODEL.
-"""
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-import os
-import re
-import sys
-import json
-import datetime
-import urllib.request
-import urllib.error
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")  # override via GEMINI_MODEL var
-NICHE = "data engineering, AI/ML, and cloud-native systems"
-TOPICS_FILE = "topics.txt"
-ARTICLES_DIR = "articles"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-ENDPOINT = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
-)
+      - name: Generate today's article
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          ARTICLE_TOPICS: ${{ secrets.ARTICLE_TOPICS }}
+        run: python scripts/generate_article.py
 
+      - name: Commit the new article
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add articles/
+          git diff --staged --quiet || git commit -m "Add daily article ($(date -u +%Y-%m-%d))"
+          git push
 
-def api_key() -> str:
-    k = os.environ.get("GEMINI_API_KEY")
-    if not k:
-        sys.exit("ERROR: GEMINI_API_KEY is not set.")
-    return k
-
-
-def get_topics() -> list[str]:
-    """Topics from the ARTICLE_TOPICS secret (private), or topics.txt as fallback."""
-    env = os.environ.get("ARTICLE_TOPICS")
-    if env and env.strip():
-        return [l.strip() for l in env.splitlines() if l.strip()]
-    if os.path.exists(TOPICS_FILE):
-        return [l.strip() for l in open(TOPICS_FILE) if l.strip()]
-    return []
-
-
-def pick_topic(topics: list[str]) -> str | None:
-    """Rotate through the list by date so it cycles without storing any state."""
-    if not topics:
-        return None
-    idx = datetime.date.today().toordinal() % len(topics)
-    return topics[idx]
-
-
-def call_gemini(prompt: str) -> str:
-    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
-    req = urllib.request.Request(
-        f"{ENDPOINT}?key={api_key()}",
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req) as r:
-            data = json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        sys.exit(f"Gemini API error {e.code}: {e.read().decode()}")
-    return data["candidates"][0]["content"]["parts"][0]["text"]
-
-
-def main() -> None:
-    topic = pick_topic(get_topics())
-    topic_line = (
-        f'The topic is: "{topic}".'
-        if topic
-        else f"Pick a fresh, specific, currently-relevant topic in {NICHE}."
-    )
-
-    prompt = f"""You are a professional technical writer. Write one original, engaging article for Dev.to.
-
-{topic_line}
-
-Return ONLY valid JSON (no markdown fences, no preamble) with exactly these keys:
-- "title": a compelling title (string)
-- "description": a one-sentence summary under 150 characters (string)
-- "tags": 2 to 4 lowercase single-word tags, as a JSON array of strings
-- "body_markdown": the full article in Markdown, 700-1100 words, using ## headings,
-  short paragraphs, and a brief conclusion. Do NOT include the title as an H1 in the body.
-"""
-
-    raw = call_gemini(prompt).strip()
-    raw = re.sub(r"^```(json)?|```$", "", raw, flags=re.MULTILINE).strip()
-    art = json.loads(raw, strict=False)
-
-    tags = [str(t).lower() for t in art.get("tags", [])][:4]
-    # one self-contained folder per article: articles/article<MMDDYYYY>_<HHMMSS>/
-    ts = datetime.datetime.now().strftime("%m%d%Y_%H%M%S")
-    folder = os.path.join(ARTICLES_DIR, f"article{ts}")
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, "article.md")
-
-    q = chr(34)  # double quote
-    sq = chr(39)  # single quote
-    front_matter = (
-        "---\n"
-        f"title: {q}{art['title'].replace(q, sq)}{q}\n"
-        "published: false\n"
-        f"description: {q}{art.get('description', '').replace(q, sq)}{q}\n"
-        f"tags: {', '.join(tags)}\n"
-        "canonical_url:\n"
-        "---\n\n"
-    )
-
-    with open(path, "w") as f:
-        f.write(front_matter + art["body_markdown"].strip() + "\n")
-    print(f"Wrote {path}")
-    if topic:
-        print(f"Topic used: {topic}")
-
-
-if __name__ == "__main__":
-    main()
+      - name: Push drafts to Dev.to
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+        run: python scripts/post_to_devto.py
