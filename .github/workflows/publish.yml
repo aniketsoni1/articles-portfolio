@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "posts/**"          # run whenever an article is added/changed
+
+  schedule:
+    - cron: "5 19 * * *"     # every day at 18:00 UTC
   
   workflow_dispatch: {}       # lets you trigger it manually from the Actions tab
 
