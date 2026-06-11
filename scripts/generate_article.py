@@ -10,19 +10,23 @@ If topics.txt is empty/missing, the model picks a fresh topic in NICHE below.
 Requires the GEMINI_API_KEY environment variable (a GitHub Actions secret).
 Get a free key at https://aistudio.google.com/app/apikey
 
-NOTE: Google changes model names and free-tier limits over time. If you get a
-404/model error, check the current free model name in AI Studio and update MODEL.
+The model is read from the GEMINI_MODEL environment variable (a GitHub Actions
+repository variable). If unset, it falls back to a model that currently has
+free-tier quota. NOTE: Google changes model names and free-tier limits over
+time. If you get a 404/model error, check the current free model name in
+AI Studio and update the GEMINI_MODEL repo variable (or the fallback below).
 """
 
 import os
 import re
 import sys
 import json
+import time
 import datetime
 import urllib.request
 import urllib.error
 
-MODEL = "gemini-2.0-flash"          # free-tier model; verify/update at AI Studio
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite").strip() or "gemini-2.5-flash-lite"
 NICHE = "data engineering, AI/ML, and cloud-native systems"
 TOPICS_FILE = "topics.txt"
 ARTICLES_DIR = "articles"
@@ -57,23 +61,35 @@ def pick_topic(topics: list[str]) -> str | None:
     return topics[idx]
 
 
-def call_gemini(prompt: str) -> str:
+def call_gemini(prompt: str, retries: int = 3) -> str:
+    """Call the Gemini API, retrying transient 429 rate limits with backoff."""
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
-    req = urllib.request.Request(
-        f"{ENDPOINT}?key={api_key()}",
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req) as r:
-            data = json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        sys.exit(f"Gemini API error {e.code}: {e.read().decode()}")
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+    for attempt in range(retries):
+        req = urllib.request.Request(
+            f"{ENDPOINT}?key={api_key()}",
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req) as r:
+                data = json.loads(r.read().decode())
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        except urllib.error.HTTPError as e:
+            err = e.read().decode()
+            if e.code == 429 and attempt < retries - 1:
+                wait = 30 * (attempt + 1)  # 30s, 60s
+                print(f"429 rate limit hit, retrying in {wait}s "
+                      f"(attempt {attempt + 1}/{retries - 1})...")
+                time.sleep(wait)
+                continue
+            sys.exit(f"Gemini API error {e.code}: {err}")
+    sys.exit("Gemini API: exhausted all retries.")
 
 
 def main() -> None:
+    print(f"Using model: {MODEL}")
+
     topic = pick_topic(get_topics())
     topic_line = (
         f'The topic is: "{topic}".'
