@@ -63,7 +63,16 @@ def pick_topic(topics: list[str]) -> str | None:
 
 def call_gemini(prompt: str, retries: int = 3) -> str:
     """Call the Gemini API, retrying transient 429 rate limits with backoff."""
-    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
+    body = json.dumps(
+        {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": 8192,       # long-form article needs headroom
+                "temperature": 0.8,
+                "responseMimeType": "application/json",  # raw JSON, no md fences
+            },
+        }
+    ).encode()
     for attempt in range(retries):
         req = urllib.request.Request(
             f"{ENDPOINT}?key={api_key()}",
@@ -97,16 +106,52 @@ def main() -> None:
         else f"Pick a fresh, specific, currently-relevant topic in {NICHE}."
     )
 
-    prompt = f"""You are a professional technical writer. Write one original, engaging article for Dev.to.
+    prompt = f"""You are a senior data/platform engineer with 6+ years of production experience in
+financial services and healthcare, writing under your own byline on Dev.to. You write like a
+practitioner sharing hard-won lessons, not like a textbook or a content marketer.
 
 {topic_line}
 
+VOICE AND STYLE (non-negotiable):
+- First person, opinionated, direct. Take positions ("Don't develop against `latest`.").
+- Open with a relatable war story or pain the reader has lived, NOT with "In today's
+  fast-paced world" or "change is the only constant" style filler.
+- Concrete over abstract everywhere: real version numbers, real config keys, real
+  failure modes, real trade-offs. Name specific tools.
+- Short paragraphs. Occasional dry humor is fine. Zero corporate filler phrases.
+
+REQUIRED ARTICLE STRUCTURE (in body_markdown, in this order):
+1. A blockquote starting with "> **Why I chose this topic:**" — 2-4 sentences on the gap
+   in existing content this article fills and the production experience behind it.
+2. A hook opening (2-4 paragraphs): a specific failure scenario the reader recognizes,
+   then a one-paragraph promise of what the article delivers.
+3. A "## The real problem: ..." section that reframes the topic — ideally as a numbered
+   breakdown of the underlying layers/causes most people miss.
+4. 3-5 "## Step N: ..." sections walking through the solution. Each step MUST include at
+   least one realistic, runnable code block (dockerfile/yaml/python/sql/bash as fits the
+   topic) with pinned versions, followed by 2-3 bullets explaining the non-obvious
+   details ("Three details that matter more than they look:" style).
+5. Where a visual would help, insert a placeholder paragraph in bold:
+   "**Diagram N — \\"Short Title\\":** one-sentence description of what it shows."
+   Include 1-2 of these.
+6. A "## Lessons learned from production" section: 4-6 bullets, each a specific,
+   experience-backed gotcha with the reason it matters.
+7. A "## Production considerations" section: a short paragraph covering secrets,
+   security/compliance, and operational hygiene relevant to the topic.
+8. A "## Conclusion" with a "**Try it:**" call to action, an invitation to comment, and
+   one sentence teasing a follow-up article in the series.
+9. A horizontal rule, then "**SEO keywords:** ..." (8-12 comma-separated long-tail
+   keyword phrases) and "**Tags:** #tag1 #tag2 ..." on the next line.
+
+LENGTH: 1500-2200 words. Do NOT include the title as an H1 in the body.
+
 Return ONLY valid JSON (no markdown fences, no preamble) with exactly these keys:
-- "title": a compelling title (string)
-- "description": a one-sentence summary under 150 characters (string)
-- "tags": 2 to 4 lowercase single-word tags, as a JSON array of strings
-- "body_markdown": the full article in Markdown, 700-1100 words, using ## headings,
-  short paragraphs, and a brief conclusion. Do NOT include the title as an H1 in the body.
+- "title": a compelling, specific title; a colon construction with a hook phrase is good
+  (e.g. "It Works on My Cluster: ...") (string)
+- "description": a one-sentence summary under 150 characters, concrete about the payoff (string)
+- "tags": 3 to 4 lowercase single-word tags as a JSON array of strings
+- "body_markdown": the full article following the structure above (string; escape all
+  newlines and double quotes correctly so the JSON parses)
 """
 
     raw = call_gemini(prompt).strip()
@@ -128,6 +173,7 @@ Return ONLY valid JSON (no markdown fences, no preamble) with exactly these keys
         "published: false\n"
         f"description: {q}{art.get('description', '').replace(q, sq)}{q}\n"
         f"tags: {', '.join(tags)}\n"
+        "cover_image: # add hero image URL before publishing\n"
         "canonical_url:\n"
         "---\n\n"
     )
