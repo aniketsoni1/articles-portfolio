@@ -1,5 +1,7 @@
 name: Generate daily article
 on:
+  schedule:
+    - cron: "0 18 * * *"     # every day at 18:00 UTC
   workflow_dispatch: {}       # manual trigger button for testing
 permissions:
   contents: write             # allow the job to commit the new article back
