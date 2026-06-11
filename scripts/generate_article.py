@@ -98,7 +98,7 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
     sys.exit("Gemini API: exhausted all retries.")
 
 
-def parse_article(raw: str) -> dict:
+def parse_article(raw: str) -> dict | None:
     """Parse the delimiter-based response format into title/description/tags/body.
 
     Expected format:
@@ -107,16 +107,15 @@ def parse_article(raw: str) -> dict:
         TAGS: tag1, tag2, tag3
         ===BODY===
         <markdown>
+
+    Returns None if the response doesn't follow the format (caller may retry).
     """
     raw = raw.strip()
     # tolerate the model wrapping everything in a markdown fence anyway
     raw = re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip()
 
     if "===BODY===" not in raw:
-        sys.exit(
-            "ERROR: response missing ===BODY=== delimiter. First 500 chars:\n"
-            + raw[:500]
-        )
+        return None
     header, body = raw.split("===BODY===", 1)
 
     fields = {}
@@ -125,9 +124,8 @@ def parse_article(raw: str) -> dict:
         if m:
             fields[m.group(1)] = m.group(2).strip()
 
-    missing = {"TITLE", "DESCRIPTION", "TAGS"} - fields.keys()
-    if missing:
-        sys.exit(f"ERROR: response header missing {missing}. Header was:\n{header}")
+    if {"TITLE", "DESCRIPTION", "TAGS"} - fields.keys():
+        return None
 
     tags = [t.strip().lower().lstrip("#") for t in fields["TAGS"].split(",") if t.strip()]
     return {
@@ -135,6 +133,26 @@ def parse_article(raw: str) -> dict:
         "description": fields["DESCRIPTION"].strip('"'),
         "tags": tags[:4],
         "body_markdown": body.strip(),
+    }
+
+
+def salvage_article(raw: str) -> dict:
+    """Last-resort recovery when the model ignores the output format entirely:
+    treat the first non-empty line as the title and the rest as the body."""
+    raw = raw.strip()
+    raw = re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip()
+    lines = raw.splitlines()
+    title = lines[0].lstrip("# ").strip().strip('"') if lines else "Untitled"
+    body = "\n".join(lines[1:]).strip()
+    # pull description from the first real paragraph, trimmed to 150 chars
+    para = next((l.strip() for l in lines[1:] if l.strip() and not l.startswith(("#", ">"))), "")
+    description = (para[:147] + "...") if len(para) > 150 else para
+    print("WARNING: model ignored the output format; salvaged title/body heuristically.")
+    return {
+        "title": title,
+        "description": description,
+        "tags": ["dataengineering"],
+        "body_markdown": body,
     }
 
 
@@ -162,7 +180,7 @@ VOICE AND STYLE (non-negotiable):
   failure modes, real trade-offs. Name specific tools.
 - Short paragraphs. Occasional dry humor is fine. Zero corporate filler phrases.
 
-REQUIRED ARTICLE STRUCTURE (in body_markdown, in this order):
+REQUIRED ARTICLE STRUCTURE (in the body, in this order):
 1. A blockquote starting with "> **Why I chose this topic:**" — 2-4 sentences on the gap
    in existing content this article fills and the production experience behind it.
 2. A hook opening (2-4 paragraphs): a specific failure scenario the reader recognizes,
@@ -173,32 +191,46 @@ REQUIRED ARTICLE STRUCTURE (in body_markdown, in this order):
    least one realistic, runnable code block (dockerfile/yaml/python/sql/bash as fits the
    topic) with pinned versions, followed by 2-3 bullets explaining the non-obvious
    details ("Three details that matter more than they look:" style).
-5. Where a visual would help, insert a placeholder paragraph in bold:
-   "**Diagram N — \\"Short Title\\":** one-sentence description of what it shows."
-   Include 1-2 of these.
-6. A "## Lessons learned from production" section: 4-6 bullets, each a specific,
+5. A "## Lessons learned from production" section: 4-6 bullets, each a specific,
    experience-backed gotcha with the reason it matters.
-7. A "## Production considerations" section: a short paragraph covering secrets,
+6. A "## Production considerations" section: a short paragraph covering secrets,
    security/compliance, and operational hygiene relevant to the topic.
-8. A "## Conclusion" with a "**Try it:**" call to action, an invitation to comment, and
+7. A "## Conclusion" with a "**Try it:**" call to action, an invitation to comment, and
    one sentence teasing a follow-up article in the series.
-9. A horizontal rule, then "**SEO keywords:** ..." (8-12 comma-separated long-tail
+8. A horizontal rule, then "**SEO keywords:** ..." (8-12 comma-separated long-tail
    keyword phrases) and "**Tags:** #tag1 #tag2 ..." on the next line.
+
+Do NOT include any images, image placeholders, diagram descriptions, cover-image notes,
+or references to figures. Text and code blocks only.
 
 LENGTH: 1500-2200 words. Do NOT include the title as an H1 in the body.
 
-OUTPUT FORMAT — follow this EXACTLY. No JSON, no markdown fences around the whole output,
-no preamble. Output starts with the TITLE line:
+CRITICAL OUTPUT FORMAT — your response MUST start with the literal characters "TITLE:".
+Do not write anything before it. No preamble, no JSON, no markdown fence around the
+whole output. Use this exact template, including the ===BODY=== line on its own line:
 
 TITLE: <compelling, specific title; a colon construction with a hook phrase is good, e.g. "It Works on My Cluster: ...">
 DESCRIPTION: <one-sentence summary under 150 characters, concrete about the payoff>
 TAGS: <3 to 4 lowercase single-word tags, comma-separated>
 ===BODY===
 <the full article markdown following the structure above>
+
+If your response does not begin with "TITLE:" and contain the line "===BODY===", it is
+wrong and will be rejected.
 """
 
     raw = call_gemini(prompt)
     art = parse_article(raw)
+    if art is None:
+        print("Response missing the required format; retrying once with a reminder...")
+        reminder = (
+            prompt
+            + "\n\nREMINDER: Your previous attempt failed because it did not start with"
+            ' "TITLE:" and did not contain the "===BODY===" line. Follow the OUTPUT'
+            " FORMAT exactly this time."
+        )
+        raw = call_gemini(reminder)
+        art = parse_article(raw) or salvage_article(raw)
 
     tags = art["tags"]
     # one self-contained folder per article: articles/article<MMDDYYYY>_<HHMMSS>/
@@ -215,7 +247,6 @@ TAGS: <3 to 4 lowercase single-word tags, comma-separated>
         "published: false\n"
         f"description: {q}{art.get('description', '').replace(q, sq)}{q}\n"
         f"tags: {', '.join(tags)}\n"
-        "cover_image: # add hero image URL before publishing\n"
         "canonical_url:\n"
         "---\n\n"
     )
