@@ -1,31 +1,26 @@
 name: Generate daily article
-
 on:
   workflow_dispatch: {}       # manual trigger button for testing
-
 permissions:
   contents: write             # allow the job to commit the new article back
-
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Generate today's article
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           ARTICLE_TOPICS: ${{ secrets.ARTICLE_TOPICS }}
-        run: python scripts/generate_article.py
-
+        run: |
+          echo "GEMINI_MODEL variable resolves to: '$GEMINI_MODEL'"
+          python scripts/generate_article.py
       - name: Commit the new article
         run: |
           git config user.name "github-actions[bot]"
@@ -33,7 +28,6 @@ jobs:
           git add articles/
           git diff --staged --quiet || git commit -m "Add daily article ($(date -u +%Y-%m-%d))"
           git push
-
       - name: Push drafts to Dev.to
         env:
           DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
