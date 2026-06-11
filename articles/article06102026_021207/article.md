@@ -1,6 +1,6 @@
 ---
 title: "It Works on My Cluster: Containerizing Spark and Lakehouse Development with Docker"
-published: false
+published: true
 description: "How to use Docker to give every data engineer a laptop-sized replica of a production lakehouse — local Spark, Delta Lake, orchestration, and CI that actually matches prod."
 tags: docker, dataengineering, spark, devops
 cover_image: https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/articles/article06102026_021207/cover.png

@@ -1,6 +1,6 @@
 ---
 title: "Zero to Hardened: A Practical Migration Playbook for Docker Hardened Images in Regulated Industries"
-published: false
+published: true
 description: "Docker Hardened Images are now free. Here's a field-tested playbook for migrating an enterprise container fleet to DHI — including the distroless debugging problem, compliance mapping, and the failure modes nobody warns you about."
 tags: docker, security, devops, containers
 cover_image: https://raw.githubusercontent.com/aniketsoni1/articles-html-portfolio/main/articles/article06112026_014743/cover.png
