@@ -137,21 +137,54 @@ def parse_article(raw: str) -> dict | None:
 
 
 def salvage_article(raw: str) -> dict:
-    """Last-resort recovery when the model ignores the output format entirely:
-    treat the first non-empty line as the title and the rest as the body."""
+    """Recovery when the model ignores the output format: treat the first
+    non-empty line as the title, a short plain second line as the description,
+    and harvest tags from a trailing '**Tags:** #...' footer if present."""
     raw = raw.strip()
     raw = re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip()
-    lines = raw.splitlines()
-    title = lines[0].lstrip("# ").strip().strip('"') if lines else "Untitled"
-    body = "\n".join(lines[1:]).strip()
-    # pull description from the first real paragraph, trimmed to 150 chars
-    para = next((l.strip() for l in lines[1:] if l.strip() and not l.startswith(("#", ">"))), "")
-    description = (para[:147] + "...") if len(para) > 150 else para
-    print("WARNING: model ignored the output format; salvaged title/body heuristically.")
+    lines = [l for l in raw.splitlines()]
+
+    # first non-empty line = title
+    idx = 0
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    title = lines[idx].lstrip("# ").strip().strip('"') if idx < len(lines) else "Untitled"
+    idx += 1
+
+    # if the next non-empty line is short plain prose (not a heading/quote/list),
+    # treat it as the description rather than part of the body
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    description = ""
+    if idx < len(lines):
+        cand = lines[idx].strip()
+        if cand and not cand.startswith(("#", ">", "-", "*", "`")) and len(cand) <= 200:
+            description = cand
+            idx += 1
+
+    body = "\n".join(lines[idx:]).strip()
+
+    if not description:
+        para = next(
+            (l.strip() for l in body.splitlines()
+             if l.strip() and not l.strip().startswith(("#", ">", "-", "*", "`"))),
+            "",
+        )
+        description = (para[:147] + "...") if len(para) > 150 else para
+
+    # harvest tags from a '**Tags:** #a #b #c' footer line if the article has one
+    tags = []
+    m = re.search(r"\*\*Tags:\*\*\s*(.+)", body)
+    if m:
+        tags = [t.lstrip("#").strip().lower() for t in m.group(1).split() if t.strip("#").strip()]
+    if not tags:
+        tags = ["dataengineering"]
+
+    print("NOTE: model skipped the output format; salvaged metadata heuristically.")
     return {
         "title": title,
-        "description": description,
-        "tags": ["dataengineering"],
+        "description": description[:150],
+        "tags": tags[:4],
         "body_markdown": body,
     }
 
@@ -220,17 +253,7 @@ wrong and will be rejected.
 """
 
     raw = call_gemini(prompt)
-    art = parse_article(raw)
-    if art is None:
-        print("Response missing the required format; retrying once with a reminder...")
-        reminder = (
-            prompt
-            + "\n\nREMINDER: Your previous attempt failed because it did not start with"
-            ' "TITLE:" and did not contain the "===BODY===" line. Follow the OUTPUT'
-            " FORMAT exactly this time."
-        )
-        raw = call_gemini(reminder)
-        art = parse_article(raw) or salvage_article(raw)
+    art = parse_article(raw) or salvage_article(raw)
 
     tags = art["tags"]
     # one self-contained folder per article: articles/article<MMDDYYYY>_<HHMMSS>/
