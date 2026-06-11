@@ -67,9 +67,8 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
         {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
-                "maxOutputTokens": 8192,       # long-form article needs headroom
+                "maxOutputTokens": 16384,      # long-form article needs headroom
                 "temperature": 0.8,
-                "responseMimeType": "application/json",  # raw JSON, no md fences
             },
         }
     ).encode()
@@ -83,7 +82,10 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
         try:
             with urllib.request.urlopen(req) as r:
                 data = json.loads(r.read().decode())
-            return data["candidates"][0]["content"]["parts"][0]["text"]
+            cand = data["candidates"][0]
+            if cand.get("finishReason") == "MAX_TOKENS":
+                print("WARNING: output hit maxOutputTokens and may be truncated.")
+            return cand["content"]["parts"][0]["text"]
         except urllib.error.HTTPError as e:
             err = e.read().decode()
             if e.code == 429 and attempt < retries - 1:
@@ -94,6 +96,46 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
                 continue
             sys.exit(f"Gemini API error {e.code}: {err}")
     sys.exit("Gemini API: exhausted all retries.")
+
+
+def parse_article(raw: str) -> dict:
+    """Parse the delimiter-based response format into title/description/tags/body.
+
+    Expected format:
+        TITLE: ...
+        DESCRIPTION: ...
+        TAGS: tag1, tag2, tag3
+        ===BODY===
+        <markdown>
+    """
+    raw = raw.strip()
+    # tolerate the model wrapping everything in a markdown fence anyway
+    raw = re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip()
+
+    if "===BODY===" not in raw:
+        sys.exit(
+            "ERROR: response missing ===BODY=== delimiter. First 500 chars:\n"
+            + raw[:500]
+        )
+    header, body = raw.split("===BODY===", 1)
+
+    fields = {}
+    for line in header.splitlines():
+        m = re.match(r"^(TITLE|DESCRIPTION|TAGS)\s*:\s*(.+)$", line.strip())
+        if m:
+            fields[m.group(1)] = m.group(2).strip()
+
+    missing = {"TITLE", "DESCRIPTION", "TAGS"} - fields.keys()
+    if missing:
+        sys.exit(f"ERROR: response header missing {missing}. Header was:\n{header}")
+
+    tags = [t.strip().lower().lstrip("#") for t in fields["TAGS"].split(",") if t.strip()]
+    return {
+        "title": fields["TITLE"].strip('"'),
+        "description": fields["DESCRIPTION"].strip('"'),
+        "tags": tags[:4],
+        "body_markdown": body.strip(),
+    }
 
 
 def main() -> None:
@@ -145,20 +187,20 @@ REQUIRED ARTICLE STRUCTURE (in body_markdown, in this order):
 
 LENGTH: 1500-2200 words. Do NOT include the title as an H1 in the body.
 
-Return ONLY valid JSON (no markdown fences, no preamble) with exactly these keys:
-- "title": a compelling, specific title; a colon construction with a hook phrase is good
-  (e.g. "It Works on My Cluster: ...") (string)
-- "description": a one-sentence summary under 150 characters, concrete about the payoff (string)
-- "tags": 3 to 4 lowercase single-word tags as a JSON array of strings
-- "body_markdown": the full article following the structure above (string; escape all
-  newlines and double quotes correctly so the JSON parses)
+OUTPUT FORMAT — follow this EXACTLY. No JSON, no markdown fences around the whole output,
+no preamble. Output starts with the TITLE line:
+
+TITLE: <compelling, specific title; a colon construction with a hook phrase is good, e.g. "It Works on My Cluster: ...">
+DESCRIPTION: <one-sentence summary under 150 characters, concrete about the payoff>
+TAGS: <3 to 4 lowercase single-word tags, comma-separated>
+===BODY===
+<the full article markdown following the structure above>
 """
 
-    raw = call_gemini(prompt).strip()
-    raw = re.sub(r"^```(json)?|```$", "", raw, flags=re.MULTILINE).strip()
-    art = json.loads(raw, strict=False)
+    raw = call_gemini(prompt)
+    art = parse_article(raw)
 
-    tags = [str(t).lower() for t in art.get("tags", [])][:4]
+    tags = art["tags"]
     # one self-contained folder per article: articles/article<MMDDYYYY>_<HHMMSS>/
     ts = datetime.datetime.now().strftime("%m%d%Y_%H%M%S")
     folder = os.path.join(ARTICLES_DIR, f"article{ts}")
