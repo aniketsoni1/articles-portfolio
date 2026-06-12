@@ -93,30 +93,96 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
     sys.exit("Gemini API: exhausted all retries.")
 
 
-def fetch_cover_image(keyword: str) -> str:
-    """Search Unsplash for a cover photo. Returns '' if no API key, no result,
-    or any error — a missing cover must never fail the run."""
+def fetch_images(keywords: list[str]) -> list[dict]:
+    """Search Unsplash for one landscape photo per keyword. Returns a list of
+    {url, author, author_url} dicts (deduplicated). Empty list if no API key
+    or on any error — images are best-effort and must never fail the run."""
     access_key = os.environ.get("UNSPLASH_ACCESS_KEY", "").strip()
-    if not access_key or not keyword:
-        return ""
-    try:
-        url = (
-            "https://api.unsplash.com/search/photos?"
-            + urllib.parse.urlencode(
-                {"query": keyword.replace("-", " "), "per_page": 1,
-                 "orientation": "landscape"}
+    if not access_key:
+        return []
+
+    utm = "utm_source=articles_pipeline&utm_medium=referral"
+    images, seen_ids = [], set()
+    for kw in keywords:
+        kw = kw.strip().strip('"').replace("-", " ")
+        if not kw:
+            continue
+        try:
+            url = (
+                "https://api.unsplash.com/search/photos?"
+                + urllib.parse.urlencode(
+                    {"query": kw, "per_page": 3, "orientation": "landscape"}
+                )
             )
+            req = urllib.request.Request(
+                url, headers={"Authorization": f"Client-ID {access_key}"}
+            )
+            with urllib.request.urlopen(req, timeout=15) as r:
+                results = json.loads(r.read().decode()).get("results", [])
+            photo = next((p for p in results if p["id"] not in seen_ids), None)
+            if not photo:
+                continue
+            seen_ids.add(photo["id"])
+            images.append(
+                {
+                    "url": photo["urls"]["regular"],
+                    "author": photo["user"]["name"],
+                    "author_url": f"{photo['user']['links']['html']}?{utm}",
+                    "unsplash_url": f"https://unsplash.com/?{utm}",
+                }
+            )
+            # Unsplash API guidelines: ping download_location when a photo is used
+            try:
+                dl = photo.get("links", {}).get("download_location")
+                if dl:
+                    dreq = urllib.request.Request(
+                        dl, headers={"Authorization": f"Client-ID {access_key}"}
+                    )
+                    urllib.request.urlopen(dreq, timeout=10).read()
+            except Exception:
+                pass  # tracking ping is best-effort
+        except Exception as e:  # noqa: BLE001
+            print(f"NOTE: Unsplash lookup failed for '{kw}' ({e}); skipping.")
+    return images
+
+
+def image_markdown(img: dict) -> str:
+    return (
+        f"![Photo by {img['author']} on Unsplash]({img['url']})\n"
+        f"*Photo by [{img['author']}]({img['author_url']}) on "
+        f"[Unsplash]({img['unsplash_url']})*\n"
+    )
+
+
+def insert_inline_images(body: str, images: list[dict]) -> str:
+    """Insert up to two images at structural points in the article: the first
+    before the second '## ' heading (i.e. after the problem-framing section),
+    the second before the '## Lessons learned' heading. Falls back to skipping
+    an image if the anchor heading doesn't exist."""
+    if not images:
+        return body
+
+    lines = body.split("\n")
+    heading_idxs = [i for i, l in enumerate(lines) if l.startswith("## ")]
+
+    insertions = []  # (line_index, image)
+    if len(images) >= 1 and len(heading_idxs) >= 2:
+        insertions.append((heading_idxs[1], images[0]))
+    if len(images) >= 2:
+        lessons_idx = next(
+            (i for i, l in enumerate(lines)
+             if l.startswith("## ") and "lessons learned" in l.lower()),
+            None,
         )
-        req = urllib.request.Request(
-            url, headers={"Authorization": f"Client-ID {access_key}"}
-        )
-        with urllib.request.urlopen(req, timeout=15) as r:
-            results = json.loads(r.read().decode()).get("results", [])
-        if results:
-            return results[0]["urls"]["regular"]
-    except Exception as e:  # noqa: BLE001 — cover image is best-effort only
-        print(f"NOTE: Unsplash lookup failed ({e}); continuing without cover.")
-    return ""
+        if lessons_idx is None and len(heading_idxs) >= 4:
+            lessons_idx = heading_idxs[-2]
+        if lessons_idx is not None and all(idx != lessons_idx for idx, _ in insertions):
+            insertions.append((lessons_idx, images[1]))
+
+    # insert bottom-up so earlier indices stay valid
+    for idx, img in sorted(insertions, key=lambda x: -x[0]):
+        lines[idx:idx] = [image_markdown(img), ""]
+    return "\n".join(lines)
 
 
 def parse_article(raw: str) -> dict | None:
@@ -132,7 +198,7 @@ def parse_article(raw: str) -> dict | None:
 
     fields = {}
     for line in header.splitlines():
-        m = re.match(r"^(TITLE|DESCRIPTION|TAGS|IMAGE_PROMPT)\s*:\s*(.+)$", line.strip())
+        m = re.match(r"^(TITLE|DESCRIPTION|TAGS|IMAGE_PROMPTS?)\s*:\s*(.+)$", line.strip())
         if m:
             fields[m.group(1)] = m.group(2).strip()
 
@@ -140,11 +206,14 @@ def parse_article(raw: str) -> dict | None:
         return None
 
     tags = [t.strip().lower().lstrip("#") for t in fields["TAGS"].split(",") if t.strip()]
+    raw_prompts = fields.get("IMAGE_PROMPTS") or fields.get("IMAGE_PROMPT") or ""
+    sep = "|" if "|" in raw_prompts else ","
+    image_prompts = [p.strip().strip('"') for p in raw_prompts.split(sep) if p.strip()][:3]
     return {
         "title": fields["TITLE"].strip('"'),
         "description": fields["DESCRIPTION"].strip('"'),
         "tags": tags[:4],
-        "image_prompt": fields.get("IMAGE_PROMPT", "").strip('"'),
+        "image_prompts": image_prompts,
         "body_markdown": body.strip(),
     }
 
@@ -194,7 +263,7 @@ def salvage_article(raw: str) -> dict:
         "title": title,
         "description": description[:150],
         "tags": tags[:4],
-        "image_prompt": "",
+        "image_prompts": [],
         "body_markdown": body,
     }
 
@@ -241,7 +310,9 @@ on its own line:
 TITLE: <compelling, specific title>
 DESCRIPTION: <one-sentence summary under 150 characters>
 TAGS: <3 to 4 lowercase single-word tags, comma-separated>
-IMAGE_PROMPT: <1 to 3 search keywords for a cover photo, e.g. "server rack", "data center">
+IMAGE_PROMPTS: <three photo search keyword phrases separated by " | ": first for the
+banner, then two matching the article's middle sections, each 1-3 words, e.g.
+"server rack | data pipeline | code review">
 ===BODY===
 <the full article markdown following the structure above>
 """
@@ -249,7 +320,17 @@ IMAGE_PROMPT: <1 to 3 search keywords for a cover photo, e.g. "server rack", "da
     raw = call_gemini(prompt)
     art = parse_article(raw) or salvage_article(raw)
 
-    cover_url = fetch_cover_image(art.get("image_prompt", ""))
+    images = fetch_images(art.get("image_prompts", []))
+    cover_url = images[0]["url"] if images else ""
+    body = insert_inline_images(art["body_markdown"], images[1:3])
+
+    # cover photo credit appended to the article footer (Unsplash API terms)
+    if images:
+        c = images[0]
+        body += (
+            f"\n\n*Cover photo by [{c['author']}]({c['author_url']}) on "
+            f"[Unsplash]({c['unsplash_url']}).*"
+        )
 
     tags = art["tags"]
     ts = datetime.datetime.now().strftime("%m%d%Y_%H%M%S")
@@ -273,8 +354,9 @@ IMAGE_PROMPT: <1 to 3 search keywords for a cover photo, e.g. "server rack", "da
     )
 
     with open(path, "w") as f:
-        f.write(front_matter + art["body_markdown"].strip() + "\n")
-    print(f"Wrote {path}" + (" with cover image" if cover_url else " (no cover image)"))
+        f.write(front_matter + body.strip() + "\n")
+    n_inline = max(0, len(images) - 1)
+    print(f"Wrote {path} (cover: {'yes' if cover_url else 'no'}, inline images: {n_inline})")
     if topic:
         print(f"Topic used: {topic}")
 
