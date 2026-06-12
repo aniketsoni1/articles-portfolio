@@ -1,8 +1,7 @@
 ---
-title: "TITLE: The Silent Killer in Your Streaming Pipeline: Schema Evolution Without Tears"
-published: false
+title: "The Silent Killer in Your Streaming Pipeline: Schema Evolution Without Tears"
+published: true
 description: "DESCRIPTION: How to evolve streaming data schemas in production without breaking downstream consumers. Proven tactics for financial and healthcare sys"
-tags: schema, streaming, datapipelines, production
 canonical_url:
 ---
 

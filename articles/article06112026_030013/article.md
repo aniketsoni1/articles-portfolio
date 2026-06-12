@@ -1,6 +1,6 @@
 ---
 title: "Navigating Schema Shifts: Keeping Your Streaming Pipeline Smooth for Everyone"
-published: false
+published: true
 description: "Learn strategies for evolving streaming data schemas without causing downtime or data corruption for your downstream consumers."
 tags: streaming, schema, data, engineering
 canonical_url:
