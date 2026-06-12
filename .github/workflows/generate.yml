@@ -20,6 +20,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           ARTICLE_TOPICS: ${{ secrets.ARTICLE_TOPICS }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
         run: |
           echo "GEMINI_MODEL variable resolves to: '$GEMINI_MODEL'"
           python scripts/generate_article.py
