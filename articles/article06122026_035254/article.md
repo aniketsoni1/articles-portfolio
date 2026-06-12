@@ -1,6 +1,6 @@
 ---
 title: "Stop Burning Cash: Databricks Cost Optimization Patterns That Actually Work"
-published: false
+published: true
 description: "Move past generic advice. Learn how to actually cut your Databricks bill using spot instances, photon tuning, and job-specific cluster sizing."
 tags: databricks, cloud, finops, dataengineering
 cover_image: https://images.unsplash.com/photo-1762163516269-3c143e04175c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NzU0MjJ8MHwxfHNlYXJjaHwxfHxzZXJ2ZXIlMjByYWNrJTIwZGF0YSUyMGNlbnRlcnxlbnwwfDB8fHwxNzgxMjM2MzcyfDA&ixlib=rb-4.1.0&q=80&w=1080
