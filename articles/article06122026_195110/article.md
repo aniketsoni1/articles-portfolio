@@ -1,6 +1,6 @@
 ---
 title: "Streaming Tables vs. Materialized Views: Stop Guessing Your Databricks Refresh Strategy"
-published: false
+published: true
 description: "Stop wasting compute costs. A battle-hardened guide to choosing between Databricks Streaming Tables and Materialized Views in production."
 tags: databricks, dataengineering, spark, delta
 cover_image: https://images.unsplash.com/photo-1558494949-ef010cbdcc31?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NzU0MjJ8MHwxfHNlYXJjaHwxfHxzZXJ2ZXIlMjByYWNrfGVufDB8MHx8fDE3ODEyOTM4Njh8MA&ixlib=rb-4.1.0&q=80&w=1080
