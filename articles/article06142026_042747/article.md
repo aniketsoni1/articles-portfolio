@@ -1,6 +1,6 @@
 ---
 title: "Is BigLake the End of Your Vendor Lock-in Delusion?"
-published: false
+published: true
 description: "Hard-won lessons on implementing Apache Iceberg on Google Cloud’s BigLake without losing your sanity or your budget."
 tags: gcp, bigquery, iceberg, dataengineering
 cover_image: https://images.unsplash.com/photo-1648583169236-88719c481050?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NzU0MjJ8MHwxfHNlYXJjaHw1fHxicm9rZW4lMjBnbGFzcyUyMGFic3RyYWN0fGVufDB8MHx8fDE3ODE0MTEyNjZ8MA&ixlib=rb-4.1.0&q=80&w=1080

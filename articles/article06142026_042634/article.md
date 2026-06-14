@@ -1,13 +1,10 @@
 ---
-title: "TITLE: Querying Petabytes of Iceberg Tables via BigLake without Breaking Production"
-published: false
+title: "Querying Petabytes of Iceberg Tables via BigLake without Breaking Production"
+published: true
 description: "DESCRIPTION: A field guide to deploying BigLake with Apache Iceberg on GCP, avoiding common pitfalls in metadata handling and partition pruning."
-tags: dataengineering
+tags: dataengineering, gcp, iceberg, bigquery, data
 canonical_url:
 ---
-
-TAGS: gcp, iceberg, bigquery, data
-IMAGE_PROMPTS: server room cables | shattered glass | abstract data flow
 
 > **Why I chose this topic:** I spent three weeks debugging a BigLake performance regression caused by misconfigured partition evolution and I’m tired of seeing "just point it at your bucket" advice. You need to understand the underlying manifest file overhead before you put your production dashboards on top of an Iceberg lakehouse.
 

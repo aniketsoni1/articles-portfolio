@@ -1,6 +1,6 @@
 ---
 title: "Why I’m finally ditching Hive Metastore for BigLake Iceberg"
-published: false
+published: true
 description: "A field guide to migrating production workloads to BigLake Iceberg on GCP, avoiding common pitfalls and performance traps."
 tags: gcp, iceberg, bigquery, dataengineering
 cover_image: https://images.unsplash.com/photo-1744868562210-fffb7fa882d9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NzU0MjJ8MHwxfHNlYXJjaHw1fHxzZXJ2ZXIlMjByb29tJTIwY2FibGVzfGVufDB8MHx8fDE3ODE0MTExMzB8MA&ixlib=rb-4.1.0&q=80&w=1080

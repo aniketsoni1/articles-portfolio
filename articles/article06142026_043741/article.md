@@ -1,6 +1,6 @@
 ---
 title: "Time Travel isn't a Debugging Luxury: Why Delta and Iceberg are Compliance Essentials"
-published: false
+published: true
 description: "Stop treating data snapshots as an afterthought; here is how to use Iceberg and Delta to satisfy auditors and fix production fires."
 tags: data, engineering, iceberg, delta
 cover_image: https://images.unsplash.com/photo-1680992045535-95919d4971a9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NzU0MjJ8MHwxfHNlYXJjaHw3fHxob3VyZ2xhc3MlMjBpbiUyMHNlcnZlciUyMHJvb218ZW58MHwwfHx8MTc4MTQxMTg2MHww&ixlib=rb-4.1.0&q=80&w=1080

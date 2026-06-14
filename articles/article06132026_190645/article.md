@@ -1,6 +1,6 @@
 ---
 title: "Cutting Snowflake compute costs 40 percent: warehouse sizing, auto-suspend, and query pruning"
-published: false
+published: true
 description: "Stop burning your cloud budget. I cut our Snowflake bill by 40% using these specific warehouse and query optimization strategies."
 tags: snowflake, cloud, cost-optimization, data
 cover_image: https://images.unsplash.com/photo-1558494949-ef010cbdcc31?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NzU0MjJ8MHwxfHNlYXJjaHwxfHxzZXJ2ZXIlMjByYWNrfGVufDB8MHx8fDE3ODEyOTM4Njh8MA&ixlib=rb-4.1.0&q=80&w=1080
