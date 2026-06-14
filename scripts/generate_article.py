@@ -21,6 +21,7 @@ import sys
 import json
 import time
 import random
+import hashlib
 import datetime
 import urllib.parse
 import urllib.request
@@ -31,6 +32,7 @@ NICHE = "data engineering, AI/ML, and cloud-native systems"
 TOPICS_FILE = "topics.txt"
 ARTICLES_DIR = "articles"
 HISTORY_FILE = os.path.join(ARTICLES_DIR, ".image_history.json")
+TOPIC_HISTORY_FILE = os.path.join(ARTICLES_DIR, ".topic_history.json")
 
 ENDPOINT = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
@@ -88,6 +90,15 @@ TITLE_STYLES = [
     "a concrete description of the outcome, no buzzwords",
 ]
 
+OPENING_STYLES = [
+    "a short war story from production (something that broke and what it cost)",
+    "a surprising or counterintuitive statistic, then why it matters",
+    "a bold claim your peers would argue with, stated flatly in the first line",
+    "a direct second-person scenario ('You ship the job. It passes CI. Then...')",
+    "a myth you're about to dismantle, named in the first sentence",
+    "a concrete before/after contrast (what life looked like, what it looks like now)",
+]
+
 
 def api_key() -> str:
     k = os.environ.get("GEMINI_API_KEY")
@@ -105,11 +116,40 @@ def get_topics() -> list[str]:
     return []
 
 
+def _topic_hash(t: str) -> str:
+    return hashlib.sha256(t.strip().lower().encode()).hexdigest()[:16]
+
+
+def _load_json(path, default):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def _save_json(path, data):
+    try:
+        os.makedirs(ARTICLES_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=0)
+    except Exception:
+        pass
+
+
 def pick_topic(topics: list[str]) -> str | None:
+    """Pick a topic at RANDOM, avoiding recently-used ones. History stores only
+    SHA hashes (not the topic text) so the private topic list never leaks into
+    the public repo."""
     if not topics:
         return None
-    idx = datetime.date.today().toordinal() % len(topics)
-    return topics[idx]
+    history = _load_json(TOPIC_HISTORY_FILE, [])
+    candidates = [t for t in topics if _topic_hash(t) not in history] or topics
+    choice = random.choice(candidates)
+    history.append(_topic_hash(choice))
+    keep = max(1, min(len(topics) - 1, 10))  # always leave at least one fresh option
+    _save_json(TOPIC_HISTORY_FILE, history[-keep:])
+    return choice
 
 
 def call_gemini(prompt: str, retries: int = 4) -> str:
@@ -247,19 +287,41 @@ def insert_inline_images(body: str, images: list[dict]) -> str:
     return "\n".join(lines)
 
 
+FIELD_RE = re.compile(r"^(TITLE|DESCRIPTION|TAGS|IMAGE_PROMPTS?)\s*:\s*(.+)$")
+
+
 def parse_article(raw: str) -> dict | None:
     raw = raw.strip()
     raw = re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip()
-    if "===BODY===" not in raw:
-        return None
-    header, body = raw.split("===BODY===", 1)
+
+    if "===BODY===" in raw:
+        header, body = raw.split("===BODY===", 1)
+    else:
+        # Model forgot the delimiter: treat the leading run of blank/field lines
+        # as the header, and everything from the first real content line as body.
+        lines = raw.splitlines()
+        header_lines, i = [], 0
+        while i < len(lines):
+            s = lines[i].strip()
+            if s == "" or FIELD_RE.match(s):
+                if FIELD_RE.match(s):
+                    header_lines.append(s)
+                i += 1
+            else:
+                break
+        if not header_lines:
+            return None
+        header = "\n".join(header_lines)
+        body = "\n".join(lines[i:])
+
     fields = {}
     for line in header.splitlines():
-        m = re.match(r"^(TITLE|DESCRIPTION|TAGS|IMAGE_PROMPTS?)\s*:\s*(.+)$", line.strip())
+        m = FIELD_RE.match(line.strip())
         if m:
             fields[m.group(1)] = m.group(2).strip()
     if {"TITLE", "DESCRIPTION", "TAGS"} - fields.keys():
         return None
+
     tags = [t.strip().lower().lstrip("#") for t in fields["TAGS"].split(",") if t.strip()]
     raw_prompts = fields.get("IMAGE_PROMPTS") or fields.get("IMAGE_PROMPT") or ""
     sep = "|" if "|" in raw_prompts else ","
@@ -281,12 +343,14 @@ def salvage_article(raw: str) -> dict:
     while idx < len(lines) and not lines[idx].strip():
         idx += 1
     title = lines[idx].lstrip("# ").strip().strip('"') if idx < len(lines) else "Untitled"
+    title = re.sub(r"^TITLE\s*:\s*", "", title, flags=re.I).strip()
     idx += 1
     while idx < len(lines) and not lines[idx].strip():
         idx += 1
     description = ""
     if idx < len(lines):
         cand = lines[idx].strip()
+        cand = re.sub(r"^DESCRIPTION\s*:\s*", "", cand, flags=re.I).strip()
         if cand and not cand.startswith(("#", ">", "-", "*", "`")) and len(cand) <= 200:
             description = cand
             idx += 1
@@ -329,6 +393,7 @@ def validate_article(art: dict) -> str | None:
 def build_prompt(topic_line: str) -> tuple[str, str]:
     label, structure = random.choice(STRUCTURES)
     title_hint = random.choice(TITLE_STYLES)
+    opening_hint = random.choice(OPENING_STYLES)
     include_why = random.random() < 0.5
     include_footer = random.random() < 0.35
 
@@ -343,6 +408,16 @@ def build_prompt(topic_line: str) -> tuple[str, str]:
         if include_footer else ""
     )
 
+    # The model defaults to "## 1., ## 2." numbered lists for almost any topic.
+    # Forbid that unless the listicle structure was actually drawn.
+    no_listicle = (
+        ""
+        if label == "listicle"
+        else "- Do NOT format this as a numbered list of tips (no '## 1.', '## 2.' headings). "
+        "That format is overused. Use the descriptive prose section headings from the "
+        "structure above instead.\n"
+    )
+
     prompt = f"""You are a senior data/platform engineer with 6+ years of production experience in
 financial services and healthcare, writing under your own byline on Dev.to.
 
@@ -352,16 +427,20 @@ VOICE: first person, opinionated, direct. Concrete over abstract everywhere — 
 version numbers, real config keys, real failure modes. Short paragraphs. Occasional
 dry humor. Zero corporate filler.
 
+OPENING: begin with {opening_hint}. Do not open with a generic definition.
+
 TITLE STYLE: make the title {title_hint}. It must not sound templated or generic.
 
-STRUCTURE for THIS article (follow it, but write naturally — don't echo these labels):
+STRUCTURE for THIS article — you MUST follow this specific shape (write naturally,
+don't echo these labels verbatim):
 {why_block}{structure}
-{footer_block}
+{no_listicle}{footer_block}
 Do NOT include any image syntax in the body. Do NOT repeat the title as an H1 in the body.
 LENGTH: 1400-2200 words.
 
 CRITICAL OUTPUT FORMAT — your response MUST start with the literal characters "TITLE:".
-Do not write anything before it. Use this exact template, with ===BODY=== on its own line:
+Do not write anything before it. You MUST include the ===BODY=== line on its own line
+between the header and the article. Use this exact template:
 
 TITLE: <title>
 DESCRIPTION: <one-sentence summary under 150 characters>
