@@ -1,6 +1,6 @@
 ---
 title: "How I Finally Killed the Full-Refresh Silver Layer"
-published: false
+published: true
 description: "Stop rewriting your entire silver layer every time a dimension changes. Here is how to use Delta Change Data Feed for true incremental ETL."
 tags: delta, databricks, spark, dataengineering
 cover_image: https://images.unsplash.com/photo-1767972161406-93e1f11a5c13?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NzU0MjJ8MHwxfHNlYXJjaHwxNXx8YnJva2VuJTIwY2xvY2t8ZW58MHwwfHx8MTc4MTQxMTc4OXww&ixlib=rb-4.1.0&q=80&w=1080
