@@ -4,20 +4,23 @@ on:
   push:
     branches: [main]
     paths:
-      - "posts/**"          # run whenever an article is added/changed
-
+      - "articles/**"        # run when an article is added/changed
   schedule:
-    - cron: "5 19 * * *"     # every day at 18:00 UTC
-  
-  workflow_dispatch: {}       # lets you trigger it manually from the Actions tab
+    - cron: "5 18 * * *"     # 18:05 UTC — 5 min after the generator runs
+  workflow_dispatch:
+    inputs:
+      publish_all:
+        description: "Sync ALL articles regardless of date (backfill)"
+        type: boolean
+        default: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -27,4 +30,5 @@ jobs:
       - name: Sync articles to Dev.to
         env:
           DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          PUBLISH_ALL: ${{ inputs.publish_all }}
         run: python scripts/post_to_devto.py
