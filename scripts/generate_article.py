@@ -112,7 +112,7 @@ def pick_topic(topics: list[str]) -> str | None:
     return topics[idx]
 
 
-def call_gemini(prompt: str, retries: int = 3) -> str:
+def call_gemini(prompt: str, retries: int = 4) -> str:
     body = json.dumps(
         {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -136,9 +136,11 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
             return cand["content"]["parts"][0]["text"]
         except urllib.error.HTTPError as e:
             err = e.read().decode()
-            if e.code == 429 and attempt < retries - 1:
-                wait = 60 * (attempt + 1)
-                print(f"429 rate limit hit. Waiting {wait}s...")
+            # 429 = rate limit, 5xx = transient server issues (e.g. 503 high demand)
+            retryable = e.code == 429 or 500 <= e.code < 600
+            if retryable and attempt < retries - 1:
+                wait = (60 if e.code == 429 else 20) * (attempt + 1)
+                print(f"Gemini {e.code} (transient); waiting {wait}s then retrying...")
                 time.sleep(wait)
                 continue
             sys.exit(f"Gemini API error {e.code}: {err}")
