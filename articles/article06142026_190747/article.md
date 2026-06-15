@@ -1,6 +1,6 @@
 ---
 title: "Text-to-SQL is a solved problem: why you’re about to leak your PII"
-published: false
+published: true
 description: "Stop treating LLMs like database admins. Here is how to build production-safe text-to-SQL over governed lakehouses without losing your job."
 tags: sql, llm, security, data
 cover_image: https://images.unsplash.com/photo-1544197150-b99a580bb7a8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5NzU0MjJ8MHwxfHNlYXJjaHwzfHxzZXJ2ZXIlMjByYWNrJTIwY2FibGluZ3xlbnwwfDB8fHwxNzgxNDY0MDY2fDA&ixlib=rb-4.1.0&q=80&w=1080
